@@ -34,7 +34,7 @@ namespace CAM_WEB1.Controllers
 
 			// Executes sp_Account and returns the newly created record
 			var result = await _context.Accounts
-				.FromSqlRaw("EXEC dbo.sp_Account @Action, NULL, @Branch, @CustomerName, @CustomerID, @AccountType, @Balance, @Status, @CreatedDate", parameters)
+				.FromSqlRaw("EXEC dbo.usp_Account @Action, NULL, @Branch, @CustomerName, @CustomerID, @AccountType, @Balance, @Status, @CreatedDate", parameters)
 				.ToListAsync();
 
 			var newAccount = result.FirstOrDefault();
@@ -46,7 +46,7 @@ namespace CAM_WEB1.Controllers
 		public async Task<ActionResult<IEnumerable<Account>>> GetAllAccounts()
 		{
 			return await _context.Accounts
-				.FromSqlRaw("EXEC dbo.sp_Account @Action = 'GetAll'")
+				.FromSqlRaw("EXEC dbo.usp_Account @Action = 'GetAll'")
 				.ToListAsync();
 		}
 
@@ -56,7 +56,7 @@ namespace CAM_WEB1.Controllers
 		{
 			// Ensure you are calling the 'GetById' action defined in your SP
 			var result = await _context.Accounts
-				.FromSqlRaw("EXEC dbo.sp_Account @Action = 'GetById', @AccountID = {0}", id)
+				.FromSqlRaw("EXEC dbo.usp_Account @Action = 'GetById', @AccountID = {0}", id)
 				.ToListAsync();
 
 			var account = result.FirstOrDefault();
@@ -82,7 +82,7 @@ namespace CAM_WEB1.Controllers
 			};
 
 			await _context.Database.ExecuteSqlRawAsync(
-				"EXEC dbo.sp_Account @Action, @AccountID, @Branch, @CustomerName, @CustomerID, @AccountType, @Balance, @Status",
+				"EXEC dbo.usp_Account @Action, @AccountID, @Branch, @CustomerName, @CustomerID, @AccountType, @Balance, @Status",
 				parameters);
 
 			return NoContent();
@@ -92,7 +92,7 @@ namespace CAM_WEB1.Controllers
 		[HttpDelete("{id}")]
 		public async Task<IActionResult> DeleteAccount(int id)
 		{
-			await _context.Database.ExecuteSqlRawAsync("EXEC dbo.sp_Account @Action = 'Delete', @AccountID = {0}", id);
+			await _context.Database.ExecuteSqlRawAsync("EXEC dbo.usp_Account @Action = 'Delete', @AccountID = {0}", id);
 			return NoContent();
 		}
 	}
