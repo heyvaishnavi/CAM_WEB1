@@ -1,158 +1,192 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+﻿using CAM_WEB1.Models;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
-using CAM_WEB1.Data;
-using CAM_WEB1.Models;
+using System.Data;
 
-namespace CAM_WEB1.Controllers
+namespace YourProject.Controllers
 {
-    [Route("api/[controller]")]
     [ApiController]
-    public class UsersController : ControllerBase
+    [Route("api/user")]
+    public class UserController : ControllerBase
     {
-        private readonly ApplicationDbContext _context;
+        private readonly string _connectionString;
 
-        public UsersController(ApplicationDbContext context)
+        public UserController(IConfiguration configuration)
         {
-            _context = context;
+            _connectionString = configuration.GetConnectionString("DefaultConnection");
         }
 
-        // ============================
-        // CREATE USER
-        // POST: api/Users
-        // ============================
-        [HttpPost]
-        public async Task<IActionResult> CreateUser([FromBody] CreateUserDto dto)
+        // REGISTER
+        [HttpPost("register")]
+        public IActionResult Register(UserCreateRequest model)
         {
-            await _context.Database.ExecuteSqlRawAsync(
-                "EXEC dbo.usp_User_Master @Action = @Action, @Name = @Name, @Email = @Email, @Role = @Role, @Branch = @Branch",
-                new SqlParameter("@Action", "CREATE"),
-                new SqlParameter("@Name", dto.Name),
-                new SqlParameter("@Email", dto.Email),
-                new SqlParameter("@Role", dto.Role),
-                new SqlParameter("@Branch", dto.Branch ?? (object)DBNull.Value)
-            );
+            using SqlConnection con = new SqlConnection(_connectionString);
+            using SqlCommand cmd = new SqlCommand("usp_User_Register", con);
+            cmd.CommandType = CommandType.StoredProcedure;
 
-            return Ok(new { message = "User created successfully" });
+            cmd.Parameters.AddWithValue("@Name", model.Name);
+            cmd.Parameters.AddWithValue("@Role", model.Role);
+            cmd.Parameters.AddWithValue("@Email", model.Email);
+            cmd.Parameters.AddWithValue("@Branch", model.Branch);
+
+            con.Open();
+            cmd.ExecuteNonQuery();
+
+            return Ok("User Registered Successfully");
         }
 
-        // ============================
-        // GET USERS (FILTER)
-        // GET: api/Users?role=&branch=&status=
-        // ============================
+        // LOGIN
+        [HttpPost("login")]
+        public IActionResult Login(string email)
+        {
+            using SqlConnection con = new SqlConnection(_connectionString);
+            using SqlCommand cmd = new SqlCommand("usp_User_Login", con);
+            cmd.CommandType = CommandType.StoredProcedure;
+
+            cmd.Parameters.AddWithValue("@Email", email);
+
+            con.Open();
+            using SqlDataReader reader = cmd.ExecuteReader();
+
+            if (!reader.Read())
+                return Unauthorized("Invalid or Inactive User");
+
+            return Ok(new
+            {
+                UserId = reader["UserId"],
+                Name = reader["Name"],
+                Role = reader["Role"],
+                Email = reader["Email"],
+                Branch = reader["Branch"]
+            });
+        }
+
+        // GET (ALL / FILTERS)
+        // ================= GET (ID / ROLE / BRANCH / STATUS) =================
         [HttpGet]
-        public async Task<IActionResult> GetUsers(
-            [FromQuery] string? role,
-            [FromQuery] string? branch,
-            [FromQuery] string? status)
+        public IActionResult GetUsers(
+            int? userId,
+            string? role,
+            string? branch,
+            string? status)
         {
-            var users = await _context.Users
-                .FromSqlRaw(
-                    "EXEC dbo.usp_User_Master @Action = @Action, @Role = @Role, @Branch = @Branch, @Status = @Status",
-                    new SqlParameter("@Action", "GET_ALL"),
-                    new SqlParameter("@Role", (object?)role ?? DBNull.Value),
-                    new SqlParameter("@Branch", (object?)branch ?? DBNull.Value),
-                    new SqlParameter("@Status", (object?)status ?? DBNull.Value)
-                )
-                .ToListAsync();
+            List<User> users = new List<User>();
+
+            using SqlConnection con = new SqlConnection(_connectionString);
+            using SqlCommand cmd = new SqlCommand("usp_User_CRUD", con);
+            cmd.CommandType = CommandType.StoredProcedure;
+
+            cmd.Parameters.Add("@Action", SqlDbType.NVarChar).Value = "GET";
+            cmd.Parameters.Add("@UserId", SqlDbType.Int).Value =
+                userId ?? (object)DBNull.Value;
+            cmd.Parameters.Add("@Role", SqlDbType.NVarChar).Value =
+                role ?? (object)DBNull.Value;
+            cmd.Parameters.Add("@Branch", SqlDbType.NVarChar).Value =
+                branch ?? (object)DBNull.Value;
+            cmd.Parameters.Add("@Status", SqlDbType.NVarChar).Value =
+                status ?? (object)DBNull.Value;
+
+            con.Open();
+            using SqlDataReader reader = cmd.ExecuteReader();
+
+            while (reader.Read())
+            {
+                users.Add(new User
+                {
+                    UserID = (int)reader["UserID"],
+                    Name = reader["Name"].ToString()!,
+                    Role = reader["Role"].ToString()!,
+                    Email = reader["Email"].ToString()!,   // returned, but NOT filtered
+                    Branch = reader["Branch"]?.ToString(),
+                    Status = reader["Status"].ToString()!
+                });
+            }
 
             return Ok(users);
         }
 
-        // ============================
-        // GET USER BY ID
-        // GET: api/Users/5
-        // ============================
-        [HttpGet("{id}")]
-        public async Task<IActionResult> GetUserById(int id)
+
+        // CREATE
+        [HttpPost("create")]
+        public IActionResult Create(UserCreateRequest model)
         {
-            var result = await _context.Users
-                .FromSqlRaw(
-                    "EXEC dbo.usp_User_Master @Action = @Action, @UserID = @UserID",
-                    new SqlParameter("@Action", "GET_BY_ID"),
-                    new SqlParameter("@UserID", id)
-                )
-                .ToListAsync();
+            using SqlConnection con = new SqlConnection(_connectionString);
+            using SqlCommand cmd = new SqlCommand("usp_User_CRUD", con);
+            cmd.CommandType = CommandType.StoredProcedure;
 
-            var user = result.FirstOrDefault();
+            cmd.Parameters.AddWithValue("@Action", "CREATE");
+            cmd.Parameters.AddWithValue("@Name", model.Name);
+            cmd.Parameters.AddWithValue("@Role", model.Role);
+            cmd.Parameters.AddWithValue("@Email", model.Email);
+            cmd.Parameters.AddWithValue("@Branch", model.Branch);
 
-            if (user == null)
-                return NotFound(new { message = "User not found" });
+            con.Open();
+            cmd.ExecuteNonQuery();
 
-            return Ok(user);
+            return Ok("User Created");
         }
 
-        // ============================
-        // UPDATE USER
-        // PUT: api/Users/5
-        // ============================
+        // UPDATE (PUT)
         [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateUser(int id, [FromBody] User user)
+        public IActionResult Update(int id, UserCreateRequest model)
         {
-            if (id != user.UserID)
-                return BadRequest(new { message = "ID mismatch" });
+            using SqlConnection con = new SqlConnection(_connectionString);
+            using SqlCommand cmd = new SqlCommand("usp_User_CRUD", con);
+            cmd.CommandType = CommandType.StoredProcedure;
 
-            await _context.Database.ExecuteSqlRawAsync(
-                "EXEC dbo.usp_User_Master @Action = @Action, @UserID = @UserID, @Name = @Name, @Email = @Email, @Role = @Role, @Branch = @Branch, @Status = @Status",
-                new SqlParameter("@Action", "UPDATE"),
-                new SqlParameter("@UserID", id),
-                new SqlParameter("@Name", user.Name),
-                new SqlParameter("@Email", user.Email),
-                new SqlParameter("@Role", user.Role),
-                new SqlParameter("@Branch", user.Branch ?? (object)DBNull.Value),
-                new SqlParameter("@Status", user.Status)
-            );
+            cmd.Parameters.AddWithValue("@Action", "UPDATE");
+            cmd.Parameters.AddWithValue("@UserId", id);
+            cmd.Parameters.AddWithValue("@Name", model.Name);
+            cmd.Parameters.AddWithValue("@Role", model.Role);
+            cmd.Parameters.AddWithValue("@Email", model.Email);
+            cmd.Parameters.AddWithValue("@Branch", model.Branch);
 
-            return Ok(new { message = "User updated successfully" });
+            con.Open();
+            cmd.ExecuteNonQuery();
+
+            return Ok("User Updated");
         }
 
-        // ============================
-        // UPDATE STATUS ONLY
-        // PATCH: api/Users/5/status
-        // ============================
-        [HttpPatch("{id}/status")]
-        public async Task<IActionResult> UpdateUserStatus(int id, [FromBody] UserStatusDto dto)
+        // PATCH (STATUS TOGGLE)
+        [HttpPatch("status/{id}")]
+        public IActionResult ToggleStatus(int id)
         {
-            await _context.Database.ExecuteSqlRawAsync(
-                "EXEC dbo.usp_User_Master @Action = @Action, @UserID = @UserID, @Status = @Status",
-                new SqlParameter("@Action", "UPDATE_STATUS"),
-                new SqlParameter("@UserID", id),
-                new SqlParameter("@Status", dto.Status)
-            );
+            using SqlConnection con = new SqlConnection(_connectionString);
+            using SqlCommand cmd = new SqlCommand("usp_User_CRUD", con);
+            cmd.CommandType = CommandType.StoredProcedure;
 
-            return Ok(new { message = "User status updated successfully" });
+            cmd.Parameters.AddWithValue("@Action", "PATCH");
+            cmd.Parameters.AddWithValue("@UserId", id);
+
+            con.Open();
+            cmd.ExecuteNonQuery();
+
+            return Ok("User Status Updated");
         }
 
-        // ============================
-        // DELETE USER
-        // DELETE: api/Users/5
-        // ============================
+        // DELETE
         [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteUser(int id)
+        public IActionResult Delete(int id)
         {
-            await _context.Database.ExecuteSqlRawAsync(
-                "EXEC dbo.usp_User_Master @Action = @Action, @UserID = @UserID",
-                new SqlParameter("@Action", "DELETE"),
-                new SqlParameter("@UserID", id)
-            );
+            using SqlConnection con = new SqlConnection(_connectionString);
+            using SqlCommand cmd = new SqlCommand("usp_User_CRUD", con);
+            cmd.CommandType = CommandType.StoredProcedure;
 
-            return Ok(new { message = "User deleted successfully" });
+            cmd.Parameters.AddWithValue("@Action", "DELETE");
+            cmd.Parameters.AddWithValue("@UserId", id);
+
+            con.Open();
+            cmd.ExecuteNonQuery();
+
+            return Ok("User Deleted");
         }
+        
     }
-
-    // ============================
-    // DTOs
-    // ============================
-    public class CreateUserDto
+    public class UserCreateRequest
     {
         public string Name { get; set; }
-        public string Email { get; set; }    
         public string Role { get; set; }
-        public string? Branch { get; set; }
-    }
-
-    public class UserStatusDto
-    {
-        public string Status { get; set; } // Active / Inactive
+        public string Email { get; set; }
+        public string Branch { get; set; }
     }
 }
