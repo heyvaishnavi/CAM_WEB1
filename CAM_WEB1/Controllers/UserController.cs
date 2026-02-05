@@ -25,7 +25,7 @@ namespace CAM_WEB1.Controllers
         public async Task<IActionResult> CreateUser([FromBody] CreateUserDto dto)
         {
             await _context.Database.ExecuteSqlRawAsync(
-                "EXEC dbo.sp_User_Master @Action, @Name, @Email, @Role, @Branch",
+                "EXEC dbo.usp_User_Master @Action = @Action, @Name = @Name, @Email = @Email, @Role = @Role, @Branch = @Branch",
                 new SqlParameter("@Action", "CREATE"),
                 new SqlParameter("@Name", dto.Name),
                 new SqlParameter("@Email", dto.Email),
@@ -48,7 +48,7 @@ namespace CAM_WEB1.Controllers
         {
             var users = await _context.Users
                 .FromSqlRaw(
-                    "EXEC dbo.sp_User_Master @Action, @Role, @Branch, @Status",
+                    "EXEC dbo.usp_User_Master @Action = @Action, @Role = @Role, @Branch = @Branch, @Status = @Status",
                     new SqlParameter("@Action", "GET_ALL"),
                     new SqlParameter("@Role", (object?)role ?? DBNull.Value),
                     new SqlParameter("@Branch", (object?)branch ?? DBNull.Value),
@@ -68,7 +68,7 @@ namespace CAM_WEB1.Controllers
         {
             var result = await _context.Users
                 .FromSqlRaw(
-                    "EXEC dbo.sp_User_Master @Action, @UserID",
+                    "EXEC dbo.usp_User_Master @Action = @Action, @UserID = @UserID",
                     new SqlParameter("@Action", "GET_BY_ID"),
                     new SqlParameter("@UserID", id)
                 )
@@ -93,7 +93,7 @@ namespace CAM_WEB1.Controllers
                 return BadRequest(new { message = "ID mismatch" });
 
             await _context.Database.ExecuteSqlRawAsync(
-                "EXEC dbo.sp_User_Master @Action, @UserID, @Name, @Email, @Role, @Branch, @Status",
+                "EXEC dbo.usp_User_Master @Action = @Action, @UserID = @UserID, @Name = @Name, @Email = @Email, @Role = @Role, @Branch = @Branch, @Status = @Status",
                 new SqlParameter("@Action", "UPDATE"),
                 new SqlParameter("@UserID", id),
                 new SqlParameter("@Name", user.Name),
@@ -114,7 +114,7 @@ namespace CAM_WEB1.Controllers
         public async Task<IActionResult> UpdateUserStatus(int id, [FromBody] UserStatusDto dto)
         {
             await _context.Database.ExecuteSqlRawAsync(
-                "EXEC dbo.sp_User_Master @Action, @UserID, @Status",
+                "EXEC dbo.usp_User_Master @Action = @Action, @UserID = @UserID, @Status = @Status",
                 new SqlParameter("@Action", "UPDATE_STATUS"),
                 new SqlParameter("@UserID", id),
                 new SqlParameter("@Status", dto.Status)
@@ -131,7 +131,7 @@ namespace CAM_WEB1.Controllers
         public async Task<IActionResult> DeleteUser(int id)
         {
             await _context.Database.ExecuteSqlRawAsync(
-                "EXEC dbo.sp_User_Master @Action, @UserID",
+                "EXEC dbo.usp_User_Master @Action = @Action, @UserID = @UserID",
                 new SqlParameter("@Action", "DELETE"),
                 new SqlParameter("@UserID", id)
             );
