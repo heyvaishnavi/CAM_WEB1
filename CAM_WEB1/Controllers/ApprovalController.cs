@@ -5,137 +5,80 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
-using System.Security.Claims;
 
 namespace CAM_WEB1.Controllers
 {
     [ApiController]
-    [Route("api/approvals")]
-    [Authorize(Roles = "Manager")]
+    [Route("api/v1/approvals")]
+    [Authorize(Roles = "Manager")]   // ✅ ONLY MANAGER ACCESS
     public class ApprovalController : ControllerBase
     {
-        private readonly ApplicationDbContext _context;
         private readonly string _conn;
+
+        private readonly ApplicationDbContext _context;
+
         public ApprovalController(ApplicationDbContext context, IConfiguration configuration)
         {
+            _conn = configuration.GetConnectionString("DefaultConnection") ?? "";
             _context = context;
-            _conn = configuration.GetConnectionString("DefaultConnection");
         }
 
-        // ==========================================================
+        // =========================
         // GET ALL APPROVALS
-        // ==========================================================
+        // =========================
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public IActionResult GetAll()
         {
-            try
-            {
-                var approvals = await _context.Approvals
-                    .FromSqlRaw("EXEC usp_Approval @Action='GetAll'")
-                    .AsNoTracking()
-                    .ToListAsync();
+            var approvals = _context.Approvals
+                                    .OrderByDescending(a => a.ApprovalDate)
+                                    .ToList();
 
-                return Ok(approvals);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new
-                {
-                    message = "Error retrieving approvals",
-                    error = ex.Message
-                });
-            }
+            return Ok(approvals);
         }
 
-        // ==========================================================
+        // =========================
         // GET APPROVAL BY ID
-        // ==========================================================
+        // =========================
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(int id)
+        public IActionResult GetById(int id)
         {
-            try
-            {
-                var approvals = await _context.Approvals
-                    .FromSqlRaw(
-                        "EXEC usp_Approval @Action='GetById', @ApprovalId=@id",
-                        new SqlParameter("@id", id))
-                    .AsNoTracking()
-                    .ToListAsync();
+            var approval = _context.Approvals
+                                   .FirstOrDefault(a => a.ApprovalID == id);
 
-                var approval = approvals.FirstOrDefault();
+            if (approval == null)
+                return NotFound();
 
-                if (approval == null)
-                    return NotFound("Approval not found");
-
-                return Ok(approval);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new
-                {
-                    message = "Error retrieving approval",
-                    error = ex.Message
-                });
-            }
+            return Ok(approval);
         }
 
-        // ==========================================================
-        // APPROVE / REJECT TRANSACTION
-        // ReviewerID Automatically Taken From JWT
-        // ==========================================================
+        // =========================
+        // APPROVE / REJECT (POST)
+        // =========================
         [HttpPost("{id}/decision")]
-        public async Task<IActionResult> SubmitDecision(
+        public IActionResult SubmitDecision(
             int id,
             [FromBody] Approval request)
         {
-            if (request == null || string.IsNullOrEmpty(request.Decision))
-                return BadRequest("Invalid decision request");
-
-            try
+            var parameters = new[]
             {
-                // 🔥 Automatically get Manager ID from token
-                var claim = User.FindFirst(ClaimTypes.NameIdentifier);
-                if (claim == null)
-                    return Unauthorized("Invalid token");
+                new SqlParameter("@Action", "Update"),
+                new SqlParameter("@ApprovalId", id),
+                new SqlParameter("@ReviewerId", request.ReviewerID), // Manager
+                new SqlParameter("@Decision", request.Decision),
+                new SqlParameter("@Comments", request.Comments ?? "")
+            };
 
-                int reviewerId = int.Parse(claim.Value);
+            _context.Database.ExecuteSqlRaw(
+                "EXEC usp_Approval @Action, @ApprovalId, NULL, @ReviewerId, @Decision, @Comments",
+                parameters
+            );
+            
 
-                var parameters = new[]
-                {
-                    new SqlParameter("@Action", "Update"),
-                    new SqlParameter("@ApprovalId", id),
-                    new SqlParameter("@ReviewerId", reviewerId),
-                    new SqlParameter("@Decision", request.Decision),
-                    new SqlParameter("@Comments", request.Comments ?? "")
-                };
+            Audit(request.ReviewerID, request.Comments, null,request.Decision );
 
-                await _context.Database.ExecuteSqlRawAsync(
-                    "EXEC usp_Approval @Action, @ApprovalId, NULL, @ReviewerId, @Decision, @Comments",
-                    parameters);
-
-                Audit(request.ReviewerID, $"Approval {request.Decision}", $"ApprovalID: {id}", $" Comments: {request.Comments}");
-                return Ok(new
-                {
-                    message = "Decision submitted successfully"
-                });
-            }
-            catch (SqlException ex)
-            {
-                return BadRequest(new
-                {
-                    message = "Database error occurred",
-                    error = ex.Message
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new
-                {
-                    message = "Internal server error",
-                    error = ex.Message
-                });
-            }
+            return Ok("Decision submitted successfully");
         }
+
         private void Audit(int UserID, string action, string oldVal, string newVal)
         {
             using var con = new SqlConnection(_conn);
