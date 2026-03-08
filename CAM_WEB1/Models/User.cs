@@ -1,35 +1,29 @@
-﻿using System;
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-
-namespace CAM_WEB1.Models
+﻿namespace CAM_WEB1.Models
 {
-    [Table("t_user")]
     public class User
     {
-        [Key]
-        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-        public int UserID { get; set; }
+        public string UserID { get; set; }
 
-        [Required, StringLength(100)]
-        public string Name { get; set; } = string.Empty;
+        public string Name { get; set; }
 
-        [Required, StringLength(150)]
-        public string Email { get; set; } = string.Empty;
+        public string Email { get; set; }
 
-        [Required, StringLength(255)]
-        public string PasswordHash { get; set; } = string.Empty;
+        public string PasswordHash { get; set; }
 
-        [Required, StringLength(20)]
-        public string Role { get; set; } = "Officer";
+        public string RoleID { get; set; }
 
-        [Required, StringLength(50)]
-        public string Branch { get; set; } ="Chennai";
+        public string Branch { get; set; }
 
-        [Required, StringLength(20)]
-        public string Status { get; set; } = "Active";
+        public string Status { get; set; }
 
-        [Required]
-        public DateTime CreatedDate { get; set; } = DateTime.Now;
+        public string RefreshToken { get; set; }
+
+        public string CreatedBy { get; set; }
+
+        public DateTime CreatedDate { get; set; }
+
+        public string ModifiedBy { get; set; }
+
+        public DateTime? ModifiedDate { get; set; }
     }
 }

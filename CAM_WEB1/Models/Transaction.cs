@@ -1,29 +1,32 @@
-﻿using System;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace CAM_WEB1.Models
 {
-	[Table("t_Transactions")] // Following your 't_' coding standard
-	public class Transaction
-	{
-		[Key]
-		[DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-		public int TransactionID { get; set; }
+    [Table("t_Transaction")]
+    public class Transaction
+    {
+        [Key]
+        public string TransactionID { get; set; }
 
-		[Required]
-		public int AccountID { get; set; }
+        public string FromAccountID { get; set; }
 
-		public int? ToAccountID { get; set; } // Nullable for non-transfer transactions
+        public string? ToAccountID { get; set; }
 
-        [Required]
-		public string Type { get; set; } = string.Empty; // Deposit, Withdrawal, or Transfer [cite: 63]
+        public string Type { get; set; }
 
-		[Column(TypeName = "decimal(18,2)")]
-		public decimal Amount { get; set; }
+        public decimal Amount { get; set; }
 
-		public DateTime Date { get; set; } = DateTime.UtcNow; 
+        public string Status { get; set; }
 
-		public string Status { get; set; } = "Completed"; // Completed or Pending [cite: 67]
-	}
+        public DateTime CreatedDate { get; set; }
+
+        public string CreatedBy { get; set; }
+
+        public DateTime? ModifiedDate { get; set; }
+
+        public string? ModifiedBy { get; set; }
+
+       
+    }
 }

@@ -1,5 +1,5 @@
 ﻿using CAM_WEB1.Models;
-using CAM_WEB1.Model;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace CAM_WEB1.Data
@@ -7,104 +7,167 @@ namespace CAM_WEB1.Data
     public class ApplicationDbContext : DbContext
     {
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
-            : base(options) { }
+            : base(options)
+        {
+        }
 
+        // -----------------------------
+        // USER TABLE
+        // -----------------------------
         public DbSet<User> Users { get; set; }
-        public DbSet<Account> Accounts { get; set; }
-        public DbSet<Transaction> Transactions { get; set; } // Add this line
-        public DbSet<Approval> Approvals { get; set; }
 
+        // -----------------------------
+        // ROLE TABLE
+        // -----------------------------
+        public DbSet<Role> Roles { get; set; }
+
+        public DbSet<Account> Accounts { get; set; }
+
+        public DbSet<Transaction> Transactions { get; set; }
+
+        public DbSet<Approval> Approvals { get; set; }
         public DbSet<Report> Reports { get; set; }
+
         public DbSet<ReportAudit> ReportAudits { get; set; }
 
+        // -----------------------------
+        // MODEL CONFIGURATION
+        // -----------------------------
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
-
+            //------------------------------------------------
+            // USER TABLE CONFIG
+            //------------------------------------------------
             modelBuilder.Entity<User>(entity =>
             {
-                entity.ToTable("t_User"); // t_ prefix
-                entity.HasKey(u => u.UserID);
+                entity.ToTable("t_User");
 
-                entity.Property(u => u.Name).HasMaxLength(100).IsRequired();
-                entity.Property(u => u.Role).HasMaxLength(20).IsRequired();
+                entity.HasKey(e => e.UserID);
 
-                entity.Property(u => u.Email).HasMaxLength(200).IsRequired();
-                entity.Property(u => u.Branch).HasMaxLength(100);
-                entity.Property(u => u.Status).HasMaxLength(10).IsRequired();
+                entity.Property(e => e.UserID)
+                      .HasMaxLength(10);
 
-                entity.HasIndex(u => u.Email).IsUnique(); // optional but common
-                entity.HasIndex(u => u.Role);
-                entity.HasIndex(u => u.Status);
-            });
+                entity.Property(e => e.Name)
+                      .HasMaxLength(100)
+                      .IsRequired();
 
+                entity.Property(e => e.Email)
+                      .HasMaxLength(100)
+                      .IsRequired();
 
-            // --- Account mapping (adjust/remove ToTable if already mapped via [Table]) ---
-            modelBuilder.Entity<Account>(entity =>
-            {
-                entity.ToTable("t_Account");     // keep your t_ naming standard
-                entity.HasKey(a => a.AccountID);
+                entity.Property(e => e.PasswordHash)
+                      .HasMaxLength(255)
+                      .IsRequired();
 
-
-                entity.Property(a => a.Branch).HasMaxLength(100);
-
-                // Helps AccountGrowthRate and branch/type filters
-                entity.HasIndex(a => new
-                {
-                    a.Status,
-                    a.CreatedDate
-                });
-            });
-
-
-            // --- Transaction mapping ---
-            modelBuilder.Entity<Transaction>(entity =>
-                {
-                    entity.ToTable("t_Transaction"); // keep your t_ naming standard
-                    entity.HasKey(t => t.TransactionID);
-
-                    // Helps date-range filtering and join to Account
-                    entity.HasIndex(t => new { t.Date, t.Status });
-                    entity.HasIndex(t => t.AccountID);
-                });
-
-            // --- Approval mapping (matches PDF fields) ---
-            modelBuilder.Entity<Approval>(entity =>
-            {
-                entity.ToTable("t_Approval");    // Coding Standard: t_ prefix
-                entity.HasKey(a => a.ApprovalID);
-
-                entity.Property(a => a.Decision)
+                entity.Property(e => e.RoleID)
                       .HasMaxLength(10)
                       .IsRequired();
 
-                entity.Property(a => a.Comments)
-                      .HasMaxLength(1024);
+                entity.Property(e => e.Branch)
+                      .HasMaxLength(100);
 
+                entity.Property(e => e.Status)
+                      .HasMaxLength(20);
 
+                entity.Property(e => e.RefreshToken)
+                      .HasMaxLength(255);
+
+                entity.Property(e => e.CreatedBy)
+                      .HasMaxLength(10);
+
+                entity.Property(e => e.ModifiedBy)
+                      .HasMaxLength(10);
             });
 
-            modelBuilder.Entity<Report>(entity =>
+
+            //------------------------------------------------
+            // ROLE TABLE CONFIG
+            //------------------------------------------------
+            modelBuilder.Entity<Role>(entity =>
             {
-                entity.ToTable("t_Report");
-                entity.HasKey(r => r.ReportId);
-                entity.Property(r => r.Scope).HasMaxLength(512).IsRequired();
-                entity.Property(r => r.Metrics).IsRequired();
+                entity.ToTable("t_Role");
+
+                entity.HasKey(e => e.RoleID);
+
+                entity.Property(e => e.RoleID)
+                      .HasMaxLength(10);
+
+                entity.Property(e => e.RoleName)
+                      .HasMaxLength(50)
+                      .IsRequired();
             });
 
-            // --- Report mapping (correct as you have it) ---
-            modelBuilder.Entity<ReportAudit>(entity =>
+         
+
+            modelBuilder.Entity<Transaction>()
+                .HasKey(t => t.TransactionID);
+
+            modelBuilder.Entity<Transaction>()
+                .Property(t => t.Amount)
+                .HasPrecision(18, 2);
+            modelBuilder.Entity<Transaction>()
+                   .ToTable("t_Transactions")
+                   .HasKey(x => x.TransactionID);
+            modelBuilder.Entity<Account>()
+                   .ToTable("t_Account")
+                   .HasKey(x => x.AccountID);
+            modelBuilder.Entity<Approval>().ToTable("t_Approvals");
+            modelBuilder.Entity<Report>()
+                   .ToTable("t_Reports");
+                   
+            modelBuilder.Entity<ReportAudit>().ToTable("t_ReportAudit");
+
+        }
+
+
+
+           
+      
+
+        
+
+
+
+        public async Task<List<Account>> ExecuteAccountSpAsync(
+            string action,
+            string? accountId = null,
+            string? branch = null,
+            string? customerName = null,
+            string? customerId = null,
+            string? accountType = null,
+            decimal? balance = null,
+            string? status = null,
+            string? userId = null)
+        {
+            var parameters = new[]
             {
-                entity.ToTable("t_Report_Audit");
-                entity.HasKey(ra => ra.AuditID);
-                entity.Property(ra => ra.Action).IsRequired().HasMaxLength(50);
-                entity.Property(ra => ra.ActionDate).IsRequired();
-            });
+                new SqlParameter("@Action", action),
+
+                new SqlParameter("@AccountID", (object?)accountId ?? DBNull.Value),
+
+                new SqlParameter("@Branch", (object?)branch ?? DBNull.Value),
+
+                new SqlParameter("@CustomerName", (object?)customerName ?? DBNull.Value),
+
+                new SqlParameter("@CustomerID", (object?)customerId ?? DBNull.Value),
+
+                new SqlParameter("@AccountType", (object?)accountType ?? DBNull.Value),
+
+                new SqlParameter("@Balance", (object?)balance ?? DBNull.Value),
+
+                new SqlParameter("@Status", (object?)status ?? DBNull.Value),
+
+                new SqlParameter("@UserID", (object?)userId ?? DBNull.Value)
+            };
+
+            return await Accounts
+                .FromSqlRaw(
+                    "EXEC usp_account_crud @Action,@AccountID,@Branch,@CustomerName,@CustomerID,@AccountType,@Balance,@Status,@UserID",
+                    parameters)
+                .ToListAsync();
         }
     }
+
 }
-            
-
-
-            

@@ -1,110 +1,73 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using CAM_WEB1.Data;
-using CAM_WEB1.Models;
-using System.Text.Json;
+﻿using CAM_WEB1.Services.Interfaces;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+using System.Text;
 
 namespace CAM_WEB1.Controllers
 {
-    [Route("api/[controller]")]
     [ApiController]
+    [Route("api/v1/reports")]
+    [Authorize(Roles = "Manager,Admin")]
     public class ReportsController : ControllerBase
     {
-        private readonly ApplicationDbContext _context;
+        private readonly IReportService _service;
 
-        public ReportsController(ApplicationDbContext context)
+        public ReportsController(IReportService service)
         {
-            _context = context;
+            _service = service;
         }
 
-        // POST: api/reports/generate
-        // Logic: Scans Transaction and Account tables to save a snapshot report
         [HttpPost("generate")]
-        public async Task<ActionResult<Report>> GenerateReport([FromQuery] string scope = "Global Summary")
+        public async Task<IActionResult> GenerateSnapshot(DateTime from, DateTime to, string branch = "Global")
         {
-            // 1. Transaction Volume Analysis (Module 2.3)
-            var totalTxns = await _context.Transactions.CountAsync();
-            var totalVolume = await _context.Transactions.SumAsync(t => t.Amount);
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
-            // 2. High-Value Count (Module 4.5)
-            // LLD identifies "High-Value" for Manager review. We use > 10,000.
-            var highValueCount = await _context.Transactions
-                .Where(t => t.Amount > 10000)
-                .CountAsync();
+            var report = await _service.GenerateSnapshot(from, to, branch, userId);
 
-            // 3. Account Growth Trends (Module 2.2)
-            var totalAccounts = await _context.Accounts.CountAsync();
-            var breakdown = await _context.Accounts
-                .GroupBy(a => a.AccountType)
-                .Select(g => new { Type = g.Key, Count = g.Count() })
-                .ToListAsync();
-
-            // 4. Formatting the Metrics into JSON for the Report table
-            var metricsObj = new
-            {
-                TotalTransactions = totalTxns,
-                TotalVolume = totalVolume,
-                HighValueTransactions = highValueCount,
-                TotalAccounts = totalAccounts,
-                AccountTypeBreakdown = breakdown
-            };
-
-            var report = new Report
-            {
-                Scope = scope,
-                Metrics = JsonSerializer.Serialize(metricsObj),
-                GeneratedDate = DateTime.UtcNow
-            };
-
-            _context.Reports.Add(report);
-            await _context.SaveChangesAsync();
-
-            // Audit Log (Following team pattern)
-            _context.Set<ReportAudit>().Add(new ReportAudit { ReportId = report.ReportId });
-
-            await _context.SaveChangesAsync();
-            return CreatedAtAction(nameof(GetReportById), new { id = report.ReportId }, report);
+            return Ok(report);
         }
 
-        // GET: api/reports/dashboard
-        // Logic: Provides live real-time data for the Admin/Manager Dashboard
-        [HttpGet("dashboard")]
-        public async Task<IActionResult> GetLiveDashboard()
+        [HttpGet("list")]
+        public async Task<IActionResult> GetReportList()
         {
-            var data = new
-            {
-                SystemOverview = new
-                {
-                    ActiveUsers = await _context.Users.CountAsync(u => u.Status == "Active"),
-                    TotalAccounts = await _context.Accounts.CountAsync(),
-                    SystemTotalBalance = await _context.Accounts.SumAsync(a => a.Balance)
-                },
-                Compliance = new
-                {
-                    PendingApprovals = await _context.Approvals.CountAsync(a => a.Decision == "Pending"),
-                    RecentHighValueAlerts = await _context.Transactions
-                        .Where(t => t.Amount > 10000)
-                        .OrderByDescending(t => t.Date)
-                        .Take(5)
-                        .ToListAsync()
-                }
-            };
-
-            return Ok(data);
+            return Ok(await _service.GetReportList());
         }
 
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<Report>>> GetHistory()
+        [HttpGet("{id}/export")]
+        public async Task<IActionResult> ExportReport(int id)
         {
-            return await _context.Reports.OrderByDescending(r => r.GeneratedDate).ToListAsync();
+            var report = await _service.GetReport(id);
+
+            if (report == null)
+                return NotFound();
+
+            var csv = new StringBuilder();
+
+            csv.AppendLine("ReportID,Branch,TotalTransactions,HighValueCount,AccountGrowthRate,GeneratedDate");
+
+            csv.AppendLine($"{report.ReportID},{report.Branch},{report.TotalTransactions},{report.HighValueCount},{report.AccountGrowthRate}%,{report.GeneratedDate}");
+
+            return File(Encoding.UTF8.GetBytes(csv.ToString()), "text/csv", $"Report_{id}.csv");
         }
 
-        [HttpGet("{id}")]
-        public async Task<ActionResult<Report>> GetReportById(long id)
+        [HttpGet("system-audits")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetSystemAudits()
         {
-            var report = await _context.Reports.FindAsync(id);
-            if (report == null) return NotFound();
-            return report;
+            return Ok(await _service.GetSystemAudits());
+        }
+
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeleteReport(int id)
+        {
+            var deleted = await _service.DeleteReport(id);
+
+            if (!deleted)
+                return NotFound();
+
+            return Ok(new { message = "Report deleted successfully" });
         }
     }
 }
